@@ -20,13 +20,28 @@ import torchvision
 from PIL import Image
 from ruamel import yaml
 from torch.utils.data import Dataset
+import json
 
-__all__ = ["TableDataSet", "VisionDataSet"]
+__all__ = ["TableDataSet", "VisionDataSet", "NLPDataset", "MMDataset"]
 
 from fate_arch.session import computing_session
 from fate_arch.abc import CTableABC
 from federatedml.util import LOGGER
 from federatedml.util.homo_label_encoder import HomoLabelEncoderClient
+
+
+import jieba
+import pickle
+import torch.optim as optim
+import pandas as pd
+
+from ark_nlp.model.tc.bert import Dataset as BertDataset
+from ark_nlp.model.tc.bert import Tokenizer
+
+
+from transformers import (
+    AutoTokenizer
+)
 
 
 class DatasetMixIn(Dataset):
@@ -201,6 +216,14 @@ class VisionDataSet(torchvision.datasets.VisionDataset, DatasetMixIn):
             tuple: (image, target) where target is the image segmentation.
         """
         img = Image.open(self.images[index]).convert(self._PIL_mode)
+        if img.size[0] > 224:
+            resize_transform = torchvision.transforms.Compose(
+                [
+                    torchvision.transforms.Resize(256),
+                    torchvision.transforms.CenterCrop(224),
+                ]
+            )
+            img = resize_transform(img)
         if self.targets_is_image:
             target = Image.open(self.targets[index])
         else:
@@ -209,3 +232,169 @@ class VisionDataSet(torchvision.datasets.VisionDataset, DatasetMixIn):
 
     def __len__(self):
         return len(self.images)
+
+
+class NLPDataSet(BertDataset, DatasetMixIn):
+    def get_num_labels(self):
+        return None
+
+    def get_num_features(self):
+        return None
+    
+    def get_keys(self):
+        return self._keys
+    
+    def as_data_instance(self):
+        from federatedml.feature.instance import Instance
+
+        def _as_instance(x):
+            if isinstance(x, np.number):
+                return Instance(label=x.tolist())
+            else:
+                return Instance(label=x)
+
+        return computing_session.parallelize(
+            data=zip(self._keys, map(_as_instance, self.targets)),
+            include_key=True,
+            partition=1,
+        )
+    
+    def __init__(self,train_data_path, is_train=True, expected_label_type=np.float32,**kwargs):
+        if is_train:
+            HomoLabelEncoderClient().label_alignment(["fake"])
+
+        train_data_df = pd.read_json(os.path.join(train_data_path, "data.json"))
+        train_data_df = (train_data_df
+                        .rename(columns={'query': 'text'})
+                        .loc[:,['text', 'label']])
+        self.dataset = BertDataset(train_data_df)
+        tokenizer = Tokenizer(vocab='bert-base-chinese', max_seq_len=50)
+        self.dataset.convert_to_ids(tokenizer)
+        key_dic = []
+        for id in range(len(self.dataset)):
+            key_dic.append(id)
+        self._keys = key_dic
+        self.targets = [self.dataset.cat2id.get(i) for i in train_data_df['label']]
+
+
+
+    def __getitem__(self,index):
+        input = self.dataset.__getitem__(index)
+        y = input['label_ids']
+        input.pop('label_ids')
+        
+        return input, y
+
+    def __len__(self):
+        return len(self.dataset)
+    
+    def get_label_align_mapping(self):
+        return self.dataset.cat2id
+
+
+
+
+class MMDataSet(DatasetMixIn):
+    def get_num_labels(self):
+        return None
+
+    def get_num_features(self):
+        return None
+    
+    def get_keys(self):
+        return self._keys
+    
+    def as_data_instance(self):
+        from federatedml.feature.instance import Instance
+
+        def _as_instance(x):
+            if isinstance(x, np.number):
+                return Instance(label=x.tolist())
+            else:
+                return Instance(label=x)
+
+        return computing_session.parallelize(
+            data=zip(self._keys, map(_as_instance, self.targets)),
+            include_key=True,
+            partition=1,
+        )
+    
+#    def __init__(self,train_data_path, is_train=True, args):
+    def __init__(self,train_data_path, is_train=True, expected_label_type=np.float32,**kwargs):
+
+        if is_train:
+            HomoLabelEncoderClient().label_alignment(["fake"])
+
+        tokenizer = AutoTokenizer.from_pretrained(
+            "bert-base-uncased",
+            do_lower_case=True,
+            cache_dir=None,
+        )
+#        if args.multiclass:
+#            labels = [0,1,2]
+#            labels2id = {'0': 0, '1': 1, '2': 2}
+#        else:
+#            labels = [0,1]
+#            labels2id = {'0': 0, '1': 1}
+        labels = [0,1]
+        labels2id = {'0': 0, '1': 1}
+        self.labels2id = labels2id
+        self.data = [json.loads(line) for line in open(os.path.join(train_data_path, "meta.jsonl"))]
+
+        self.targets = [ item['label'] for item in self.data]
+        self.img_data_dir = os.path.join(train_data_path, 'images')
+        self.tokenizer = tokenizer
+        self.labels = labels
+        self.n_classes = len(labels)
+        self.max_seq_length = 300 - 3 - 2
+        self.transforms = torchvision.transforms.Compose(
+            [
+                torchvision.transforms.Resize(256),
+                torchvision.transforms.CenterCrop(224),
+                torchvision.transforms.ToTensor(),
+                torchvision.transforms.Normalize(
+                    mean=[0.485, 0.456, 0.406],
+                    std=[0.229, 0.224, 0.225]
+                )
+            ]
+        )
+
+        key_dic = []
+        for id in range(len(self.data)):
+            key_dic.append(id)
+        self._keys = key_dic
+        pass
+ 
+
+    def __getitem__(self, index):
+
+
+        sentence = torch.LongTensor(self.tokenizer.encode(self.data[index]["text"], add_special_tokens=True))
+        start_token, sentence, end_token = sentence[0], sentence[1:-1], sentence[-1]
+        sentence = sentence[:self.max_seq_length]
+
+        if self.n_classes > 2:
+            # multiclass
+            label = torch.zeros(self.n_classes)
+            label[self.labels.index(self.data[index]["label"])] = 1
+        else:
+            label = torch.LongTensor([self.labels.index(self.data[index]["label"])])
+
+        image = Image.open(os.path.join(self.img_data_dir, self.data[index]["img"])).convert("RGB")
+        image = self.transforms(image)
+
+        return {
+            "image_start_token": start_token,
+            "image_end_token": end_token,
+            "sentence": sentence,
+            "image": image,
+            "label": label,
+        }
+
+
+
+    def __len__(self):
+        return len(self.data)
+    
+    def get_label_align_mapping(self):
+        return self.labels2id

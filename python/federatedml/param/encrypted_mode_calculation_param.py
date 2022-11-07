@@ -28,6 +28,7 @@ class EncryptedModeCalculatorParam(BaseParam):
     ----------
     mode: {'strict', 'fast', 'balance', 'confusion_opt'}
         encrypted mode, default: strict
+
     re_encrypted_rate: float or int
         numeric number in [0, 1], use when mode equals to 'balance', default: 1
     """

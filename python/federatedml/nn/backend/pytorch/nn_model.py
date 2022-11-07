@@ -46,6 +46,9 @@ def layers(layer, config, type):
             return torch.nn.LSTM()
         if layer == "RNN":
             return torch.nn.RNN()
+    elif type == "flatten":
+        if layer == "Flatten":
+            return torch.nn.Flatten()
     elif type == "activate":
         if layer == "Sigmoid":
             return torch.nn.Sigmoid()

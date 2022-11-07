@@ -32,6 +32,9 @@ from federatedml.param.ftl_param import FTLParam
 from federatedml.param.hetero_kmeans_param import KmeansParam
 from federatedml.param.hetero_nn_param import HeteroNNParam
 from federatedml.param.homo_nn_param import HomoNNParam
+from federatedml.param.homo_nlp_param import HomoNLPParam
+from federatedml.param.homo_cv_param import HomoCVParam
+from federatedml.param.homo_mm_param import HomoMMParam
 from federatedml.param.homo_onehot_encoder_param import HomoOneHotParam
 from federatedml.param.init_model_param import InitParam
 from federatedml.param.intersect_param import IntersectParam
@@ -56,6 +59,7 @@ from federatedml.param.statistics_param import StatisticsParam
 from federatedml.param.stepwise_param import StepwiseParam
 from federatedml.param.union_param import UnionParam
 
+
 __all__ = [
     "BoostingParam",
     "ObjectiveParam",
@@ -71,6 +75,9 @@ __all__ = [
     "FTLParam",
     "HeteroNNParam",
     "HomoNNParam",
+    "HomoNLPParam",
+    "HomoCVParam",
+    "HomoMMParam",
     "HomoOneHotParam",
     "InitParam",
     "IntersectParam",

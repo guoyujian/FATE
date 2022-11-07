@@ -24,10 +24,14 @@ class OneHotEncoderParam(BaseParam):
 
     Parameters
     ----------
+
     transform_col_indexes: list or int, default: -1
         Specify which columns need to calculated. -1 represent for all columns.
+
     transform_col_names : list of string, default: []
         Specify which columns need to calculated. Each element in the list represent for a column name in header.
+
+
     need_run: bool, default True
         Indicate if this module needed to be run
     """

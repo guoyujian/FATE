@@ -530,6 +530,9 @@ class ModelBase(object):
         # binary
         elif isinstance(classes, list) and len(classes) == 2:
             class_neg, class_pos = classes[0], classes[1]
+
+            # tmp = predict_score[0]
+            LOGGER.info(f'predict_score: {predict_score}')
             pred_label = predict_score.mapValues(
                 lambda x: class_pos if x > threshold else class_neg
             )
